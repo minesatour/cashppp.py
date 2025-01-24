@@ -3,11 +3,11 @@ import re
 import logging
 import time
 from scapy.all import *
-from tkinter import Tk, Button, Listbox, Label, messagebox, ttk
+import tkinter as tk  # Import tkinter with alias for clarity
+from tkinter import Button, Listbox, Label, messagebox, ttk
 import netifaces
 from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
-
 
 class ATMExploitTool:
     def __init__(self, master):
