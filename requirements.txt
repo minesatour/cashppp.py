@@ -2,3 +2,4 @@ requests
 scapy
 tk
 netifaces
+netaddr
