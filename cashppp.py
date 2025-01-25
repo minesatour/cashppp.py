@@ -8,7 +8,7 @@ import netifaces
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
-import bluetooth  # For Bluetooth scanning (if available)
+import bluepy.btle as btle  # For Bluetooth scanning (using bluepy)
 
 class ATMExploitTool:
     def __init__(self, master):
@@ -92,9 +92,14 @@ class ATMExploitTool:
                 self.atm_listbox.insert('end', device)
 
     def scan_bluetooth(self):
-        """Simulate Bluetooth scanning."""
-        nearby_devices = bluetooth.discover_devices(duration=8, lookup_names=True, lookup_oui=True)
-        return [device[0] for device in nearby_devices]
+        """Scan for Bluetooth devices."""
+        scanner = btle.Scanner()
+        devices = scanner.scan(10.0)  # Scan for 10 seconds
+        
+        nearby_devices = []
+        for dev in devices:
+            nearby_devices.append(dev.addr)  # Add the device address
+        return nearby_devices
 
     def exploit_atm(self):
         """Exploit selected ATM."""
@@ -172,6 +177,7 @@ if __name__ == "__main__":
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
 
 
