@@ -9,6 +9,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
 import bluepy.btle as btle  # For Bluetooth scanning (using bluepy)
+import threading  # To handle asynchronous operations
 
 class ATMExploitTool:
     def __init__(self, master):
@@ -59,7 +60,11 @@ class ATMExploitTool:
         self.atm_listbox.delete(0, 'end')
         self.update_ui_progress("Scanning for nearby ATMs...")
 
-        # Simulate scanning nearby networks or devices (via Wi-Fi, Bluetooth, etc.)
+        # Run scanning in a separate thread so that the GUI doesn't freeze
+        threading.Thread(target=self.run_scanning).start()
+
+    def run_scanning(self):
+        """Run the scanning processes."""
         self.scan_wifi_networks()
         self.scan_bluetooth_devices()
         
@@ -186,6 +191,7 @@ if __name__ == "__main__":
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
 
 
