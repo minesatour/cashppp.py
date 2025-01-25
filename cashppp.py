@@ -3,9 +3,9 @@ import re
 import logging
 import time
 from scapy.all import *
-import tkinter as tk  # Import tkinter with alias for clarity
-from tkinter import Button, Listbox, Label, messagebox, ttk
+from tkinter import Tk, Button, Listbox, Label, messagebox, ttk
 import netifaces
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
 
@@ -15,21 +15,22 @@ class ATMExploitTool:
         self.master.title("ATM Exploit Tool")
         self.master.geometry("600x400")
         
-        self.scan_button = tk.Button(self.master, text="Scan for ATMs", command=self.scan_for_atms)
+        self.scan_button = Button(self.master, text="Scan for ATMs", command=self.scan_for_atms)
         self.scan_button.pack(pady=20)
 
-        self.atm_listbox = tk.Listbox(self.master)
-        self.atm_listbox.pack(pady=20, fill=tk.BOTH, expand=True)
+        self.atm_listbox = Listbox(self.master)
+        self.atm_listbox.pack(pady=20, fill='both', expand=True)
 
-        self.exploit_button = tk.Button(self.master, text="Exploit ATM", command=self.exploit_atm)
+        self.exploit_button = Button(self.master, text="Exploit ATM", command=self.exploit_atm)
         self.exploit_button.pack(pady=20)
 
-        self.progress_label = tk.Label(self.master, text="")
+        self.progress_label = Label(self.master, text="")
         self.progress_label.pack(pady=10)
 
         self.atms = []
 
     def update_ui_progress(self, message):
+        """Update progress label on the UI."""
         self.progress_label.config(text=message)
 
     def scan_for_atms(self):
@@ -37,7 +38,7 @@ class ATMExploitTool:
         self.update_ui_progress("Scanning network 100.115.92.0/24 for ATMs...")
         network = "100.115.92.0/24"
         self.atms.clear()
-        self.atm_listbox.delete(0, tk.END)
+        self.atm_listbox.delete(0, 'end')
 
         # Run Nmap scan for open ports (simplified example)
         nmap_command = f"nmap -p 80,443,21,22,23,53 {network}"
@@ -54,7 +55,7 @@ class ATMExploitTool:
                 ip = self.extract_ip_from_line(line)
                 if self.is_atm_device(ip):
                     self.atms.append({"ip": ip, "port": self.extract_port_from_line(line)})
-                    self.atm_listbox.insert(tk.END, ip)
+                    self.atm_listbox.insert('end', ip)
 
         self.update_ui_progress("ATM Scan complete.")
 
@@ -101,8 +102,10 @@ class ATMExploitTool:
 
     def check_known_atm_manufacturer(self, ip):
         """Check if the IP belongs to a known ATM manufacturer."""
+        # CIDR blocks or known ATM IP ranges
         known_manufacturers = ["100.115.92.0/24"]
         for cidr in known_manufacturers:
+            # Use IPNetwork and check if the IP falls within the range
             if IPAddress(ip) in IPNetwork(cidr):
                 return True
         return False
@@ -143,6 +146,7 @@ class ATMExploitTool:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
