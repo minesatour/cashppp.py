@@ -1,27 +1,28 @@
-# Python bytecode
-*.pyc
-*.pyo
+# Python-specific files
 __pycache__/
+*.py[cod]
+*.pyo
 
-# Virtual environment directory
+# Virtual environment
 venv/
+.env/
 
 # Log files
 *.log
 
-# IDE-specific files (e.g., for PyCharm, VSCode)
-.idea/
-.vscode/
-
-# Operating system-specific files
-.DS_Store  # macOS
-Thumbs.db  # Windows
-
-# Sensitive data (e.g., credentials, configuration files)
-config.json
-secret_keys.py
-
-# Other files or directories that should be ignored
+# Temporary files
+*.tmp
 *.bak
 *.swp
+*.swo
+
+# Output files from scanning tools
+wifi_scan.*
+*.csv
+nmap_scan_output.*
+
+# System-specific files
+.DS_Store
+Thumbs.db
+
 
