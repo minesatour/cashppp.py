@@ -2,5 +2,5 @@ scapy
 requests
 netifaces
 netaddr
-pybluez  # For Bluetooth scanning (Python library for Bluetooth)
+bluepy
 
