@@ -1,37 +1,36 @@
 import os
-import re
 import logging
-import time
+import subprocess
 from scapy.all import *
-from tkinter import Tk, Button, Listbox, Label, messagebox, ttk
-import netifaces
+from tkinter import Tk, Button, Listbox, Label, messagebox
 import requests
-from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
+
 
 class ATMExploitTool:
     def __init__(self, master):
         self.master = master
         self.master.title("ATM Exploit Tool")
         self.master.geometry("600x400")
-        
+
         self.scan_button = Button(self.master, text="Scan for ATMs", command=self.scan_for_atms)
-        self.scan_button.pack(pady=20)
+        self.scan_button.pack(pady=10)
 
         self.atm_listbox = Listbox(self.master)
-        self.atm_listbox.pack(pady=20, fill='both', expand=True)
+        self.atm_listbox.pack(pady=10, fill='both', expand=True)
 
         self.exploit_button = Button(self.master, text="Exploit ATM", command=self.exploit_atm)
-        self.exploit_button.pack(pady=20)
+        self.exploit_button.pack(pady=10)
 
-        self.progress_label = Label(self.master, text="")
+        self.progress_label = Label(self.master, text="Status: Idle")
         self.progress_label.pack(pady=10)
 
-        self.atms = []
+        self.atms = []  # List to store detected ATMs
 
     def update_ui_progress(self, message):
         """Update progress label on the UI."""
-        self.progress_label.config(text=message)
+        self.progress_label.config(text=f"Status: {message}")
+        self.master.update_idletasks()
 
     def scan_for_atms(self):
         """Scan a given network range for ATMs."""
@@ -40,24 +39,26 @@ class ATMExploitTool:
         self.atms.clear()
         self.atm_listbox.delete(0, 'end')
 
-        # Run Nmap scan for open ports (simplified example)
-        nmap_command = f"nmap -p 80,443,21,22,23,53 {network}"
-        result = subprocess.run(nmap_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            # Run Nmap scan for open ports
+            nmap_command = f"nmap -p 80,443,21,22,23,53 {network}"
+            result = subprocess.run(nmap_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        self.update_ui_progress("Scan complete. Parsing results...")
+            self.update_ui_progress("Parsing scan results...")
+            output = result.stdout.decode('utf-8')
+            lines = output.splitlines()
 
-        # Parse Nmap results
-        output = result.stdout.decode('utf-8')
-        lines = output.splitlines()
+            for line in lines:
+                if "open" in line:
+                    ip = self.extract_ip_from_line(line)
+                    if ip and self.is_atm_device(ip):
+                        self.atms.append(ip)
+                        self.atm_listbox.insert('end', ip)
 
-        for line in lines:
-            if "open" in line:
-                ip = self.extract_ip_from_line(line)
-                if self.is_atm_device(ip):
-                    self.atms.append({"ip": ip, "port": self.extract_port_from_line(line)})
-                    self.atm_listbox.insert('end', ip)
-
-        self.update_ui_progress("ATM Scan complete.")
+            self.update_ui_progress("Scan complete.")
+        except Exception as e:
+            self.update_ui_progress("Error during scan.")
+            messagebox.showerror("Error", f"Failed to scan network: {e}")
 
     def exploit_atm(self):
         """Exploit selected ATM."""
@@ -65,47 +66,49 @@ class ATMExploitTool:
         if not selected_atm:
             messagebox.showwarning("Selection Error", "No ATM selected.")
             return
-        
-        atm_ip = self.atms[selected_atm[0]]["ip"]
+
+        atm_ip = self.atms[selected_atm[0]]
         self.update_ui_progress(f"Exploiting ATM at {atm_ip}...")
 
-        # Exploit selected ATM
-        result = self.atm_exploit(atm_ip)
-        self.update_ui_progress(result)
+        try:
+            result = self.atm_exploit(atm_ip)
+            self.update_ui_progress("Exploit complete.")
+            messagebox.showinfo("Exploit Success", result)
+        except Exception as e:
+            self.update_ui_progress("Exploit failed.")
+            messagebox.showerror("Error", f"Failed to exploit ATM: {e}")
 
     def atm_exploit(self, ip):
         """Simulate exploiting the ATM."""
         # Placeholder for ATM exploit logic
-        # In a real-world case, you would perform the attack here.
-        # For now, we'll just simulate a successful exploit:
+        # Replace with actual exploit logic if needed
         return f"ATM at {ip} exploited successfully! Dispensing cash..."
 
     def extract_ip_from_line(self, line):
         """Extract the IP address from the Nmap line."""
-        parts = line.split()
-        return parts[0]
-
-    def extract_port_from_line(self, line):
-        """Extract the port number from the Nmap line."""
-        parts = line.split()
-        return parts[1]
+        try:
+            ip_match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
+            if ip_match:
+                return ip_match.group(1)
+        except Exception as e:
+            logging.error(f"Failed to extract IP from line: {line}. Error: {e}")
+        return None
 
     def is_atm_device(self, ip):
-        """Use various methods to determine if the device is an ATM."""
-        if self.check_known_atm_manufacturer(ip):
-            return True
-        if self.identify_atm_service(ip):
-            return True
-        if self.detect_atm_protocol(ip):
-            return True
+        """Determine if the device is an ATM."""
+        try:
+            if self.check_known_atm_manufacturer(ip):
+                return True
+            if self.identify_atm_service(ip):
+                return True
+        except Exception as e:
+            logging.error(f"Error identifying ATM device: {ip}. Error: {e}")
         return False
 
     def check_known_atm_manufacturer(self, ip):
         """Check if the IP belongs to a known ATM manufacturer."""
-        # CIDR blocks or known ATM IP ranges
         known_manufacturers = ["100.115.92.0/24"]
         for cidr in known_manufacturers:
-            # Use IPNetwork and check if the IP falls within the range
             if IPAddress(ip) in IPNetwork(cidr):
                 return True
         return False
@@ -113,40 +116,18 @@ class ATMExploitTool:
     def identify_atm_service(self, ip):
         """Identify ATM services based on HTTP/FTP/etc."""
         try:
-            response = requests.get(f"http://{ip}")
+            response = requests.get(f"http://{ip}", timeout=3)
             if "ATM" in response.text or "ATM Service" in response.headers.get('Server', ''):
                 return True
-            return False
         except requests.RequestException:
-            return False
-
-    def detect_atm_protocol(self, ip):
-        """Detect ATM-specific protocols."""
-        try:
-            pkt = IP(dst=ip) / TCP(dport=80) / Raw(b"ATM protocol probe")
-            response = sr1(pkt, timeout=2, verbose=0)
-            if response and b"ATM_RESPONSE" in response.load:
-                return True
-            return False
-        except Exception as e:
-            logging.error(f"Error during ATM protocol detection for {ip}: {e}")
-            return False
-
-    def capture_atm_traffic(self, iface):
-        """Capture packets to detect ATM-related traffic."""
-        sniff(iface=iface, filter="tcp", prn=self.analyze_packet, store=0)
-
-    def analyze_packet(self, packet):
-        """Analyze captured packet for ATM-related traffic."""
-        if packet.haslayer(TCP) and packet.haslayer(Raw):
-            payload = packet.getlayer(Raw).load.decode(errors="ignore")
-            if "ATM" in payload or "ATM_TRANSACTION" in payload:
-                print(f"ATM traffic detected: {packet.summary()}")
-                self.atms.append({"ip": packet.src, "port": packet.dport})
+            pass
+        return False
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
