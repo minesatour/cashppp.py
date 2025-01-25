@@ -1,5 +1,6 @@
-requests
 scapy
-tk
+requests
 netifaces
 netaddr
+pybluez  # For Bluetooth scanning (Python library for Bluetooth)
+
