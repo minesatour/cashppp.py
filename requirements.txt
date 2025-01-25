@@ -1,6 +1,9 @@
 scapy
-requests
 netifaces
-netaddr
+requests
 bluepy
+netaddr
+impacket
+pycryptodome  # Dependency for impacket
+
 
