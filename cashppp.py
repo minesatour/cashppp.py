@@ -1,203 +1,171 @@
 import os
 import logging
-import time
 import subprocess
-from scapy.all import *
-from tkinter import Tk, Button, Listbox, Label, messagebox, Text, Scrollbar
-import netifaces
-import requests
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+from tkinter import Tk, Button, Listbox, Label, messagebox, Toplevel, Frame, Text, Scrollbar, Scale, StringVar, Menu
+from tkinter.ttk import Notebook, Treeview
 from netaddr import IPAddress, IPNetwork
-import bluepy.btle as btle  # For Bluetooth scanning (using bluepy)
-import threading  # To handle asynchronous operations
-from impacket.smbconnection import SMBConnection  # For SMB exploitation
-
+from scapy.all import IP, TCP, sr1, Raw
+import requests
+import bluepy.btle as btle  # For Bluetooth scanning
 
 class ATMExploitTool:
     def __init__(self, master):
         self.master = master
         self.master.title("ATM Exploit Tool")
         self.master.geometry("900x700")
+        self.master.protocol("WM_DELETE_WINDOW", self.confirm_exit)
 
-        # Adding Exit Button functionality
-        self.master.protocol("WM_DELETE_WINDOW", self.on_close)
+        # Tabbed interface
+        self.notebook = Notebook(self.master)
+        self.home_tab = Frame(self.notebook)
+        self.scan_tab = Frame(self.notebook)
+        self.exploit_tab = Frame(self.notebook)
+        self.logs_tab = Frame(self.notebook)
 
-        # Buttons for scanning and exploitation
-        self.scan_atms_button = Button(self.master, text="Scan for ATMs in Range", command=self.scan_for_atms_in_range)
-        self.scan_atms_button.pack(pady=10)
+        self.notebook.add(self.home_tab, text="Home")
+        self.notebook.add(self.scan_tab, text="Scan")
+        self.notebook.add(self.exploit_tab, text="Exploit")
+        self.notebook.add(self.logs_tab, text="Logs")
+        self.notebook.pack(expand=True, fill="both")
 
-        self.atm_listbox = Listbox(self.master, height=10, width=80)
-        self.atm_listbox.pack(pady=20, fill='both', expand=True)
+        # Home tab
+        Label(self.home_tab, text="Welcome to the ATM Exploit Tool", font=("Helvetica", 18)).pack(pady=20)
+        Label(self.home_tab, text="For educational purposes only.", font=("Helvetica", 14)).pack(pady=10)
 
-        self.exploit_button = Button(self.master, text="Exploit ATM", command=self.exploit_atm)
+        # Scan tab
+        self.scan_button = Button(self.scan_tab, text="Start Scan", command=self.scan_for_atms)
+        self.scan_button.pack(pady=10)
+
+        self.scan_progress_label = Label(self.scan_tab, text="Scan Progress:", font=("Helvetica", 14))
+        self.scan_progress_label.pack(pady=10)
+
+        self.tree = Treeview(self.scan_tab, columns=("IP", "Port", "Protocol"), show="headings")
+        self.tree.heading("IP", text="IP Address")
+        self.tree.heading("Port", text="Port")
+        self.tree.heading("Protocol", text="Protocol")
+        self.tree.pack(fill="both", expand=True)
+
+        # Exploit tab
+        self.exploit_button = Button(self.exploit_tab, text="Exploit Selected ATM", command=self.exploit_atm)
         self.exploit_button.pack(pady=10)
 
-        self.status_label = Label(self.master, text="Status Updates:", font=("Helvetica", 14))
-        self.status_label.pack(pady=10)
+        self.result_box = Text(self.exploit_tab, height=10, bg="lightgrey", state="normal")
+        self.result_box.pack(fill="both", expand=True)
 
-        # Adding the Text widget for continuous updates
-        self.text_box = Text(self.master, height=10, width=100, wrap='word', state='normal', bg='lightgrey')
-        self.text_box.pack(padx=20, pady=10, fill='both', expand=True)
+        # Logs tab
+        self.logs_box = Text(self.logs_tab, wrap="word", state="normal", bg="lightgrey")
+        self.logs_box.pack(fill="both", expand=True)
+        self.scrollbar = Scrollbar(self.logs_tab, command=self.logs_box.yview)
+        self.scrollbar.pack(side="right", fill="y")
+        self.logs_box.config(yscrollcommand=self.scrollbar.set)
 
-        self.scrollbar = Scrollbar(self.master, command=self.text_box.yview)
-        self.scrollbar.pack(side='right', fill='y')
-        self.text_box.config(yscrollcommand=self.scrollbar.set)
+        # Menu
+        self.menu = Menu(self.master)
+        self.master.config(menu=self.menu)
+        self.menu.add_command(label="Settings", command=self.open_settings)
+        self.menu.add_command(label="About", command=self.show_about)
 
+        # Variables
         self.atms = []
+        self.scan_duration = 8
+        self.current_theme = StringVar(value="Light")
+        self.logging_file = "atm_exploit_tool.log"
 
-        logging.basicConfig(filename='atm_exploit_tool.log', level=logging.DEBUG,
-                            format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.basicConfig(filename=self.logging_file, level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    def on_close(self):
-        """Close the application properly when the user clicks the X button."""
-        self.master.quit()
+    def confirm_exit(self):
+        if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
+            self.master.quit()
 
-    def update_ui_progress(self, message):
-        """Update progress text box on the UI."""
-        self.text_box.insert('end', message + '\n')
-        self.text_box.yview('end')
+    def update_ui(self, message, widget=None):
+        if widget is None:
+            widget = self.logs_box
+        widget.insert("end", message + "\n")
+        widget.yview("end")
 
-    def scan_for_atms_in_range(self):
-        """Scan for ATMs in the user's range."""
+    def open_settings(self):
+        settings_window = Toplevel(self.master)
+        settings_window.title("Settings")
+        settings_window.geometry("400x300")
+
+        Label(settings_window, text="Scan Duration (seconds):").pack(pady=10)
+        duration_slider = Scale(settings_window, from_=5, to=30, orient="horizontal")
+        duration_slider.set(self.scan_duration)
+        duration_slider.pack()
+
+        Label(settings_window, text="Select Theme:").pack(pady=10)
+        theme_dropdown = StringVar(value=self.current_theme.get())
+        theme_menu = Button(settings_window, text="Apply Theme", command=lambda: self.apply_theme(theme_dropdown.get()))
+        theme_menu.pack(pady=10)
+
+        Button(settings_window, text="Save Settings", command=settings_window.destroy).pack(pady=10)
+
+    def apply_theme(self, theme):
+        self.current_theme.set(theme)
+        # Theme logic can be added here
+
+    def show_about(self):
+        messagebox.showinfo("About", "ATM Exploit Tool\nVersion 1.0\nFor educational purposes only.")
+
+    def scan_for_atms(self):
+        threading.Thread(target=self.run_scans).start()
+
+    def run_scans(self):
         self.atms.clear()
-        self.atm_listbox.delete(0, 'end')
-        self.update_ui_progress("Scanning for nearby ATMs...")
+        self.update_ui("Scanning for ATMs...", self.logs_box)
+        self.scan_bluetooth()
+        self.scan_wifi()
+        self.update_ui(f"Scan completed. {len(self.atms)} ATM(s) found.", self.logs_box)
 
-        # Run scanning in a separate thread so that the GUI doesn't freeze
-        threading.Thread(target=self.run_scanning).start()
-
-    def run_scanning(self):
-        """Run the scanning processes."""
-        self.scan_bluetooth_devices()
-        self.scan_wifi_networks()
-        self.scan_network_services()
-
-        # After scanning, update the UI with found ATMs
-        self.update_ui_progress("Scan complete.")
-        if not self.atms:
-            self.update_ui_progress("No ATMs found in range.")
-        else:
-            self.update_ui_progress(f"{len(self.atms)} ATM(s) found.")
-
-    def scan_bluetooth_devices(self):
-        """Scan for Bluetooth devices nearby (likely ATMs)."""
-        self.update_ui_progress("Scanning for Bluetooth devices...")
-        nearby_devices = self.scan_bluetooth()
-        for device in nearby_devices:
-            if self.is_atm_device(device):
-                self.atms.append({"ip": device, "port": "Bluetooth"})
-                self.atm_listbox.insert('end', device)
+        for atm in self.atms:
+            self.tree.insert("", "end", values=(atm["ip"], atm["port"], atm["protocol"]))
 
     def scan_bluetooth(self):
-        """Scan for Bluetooth devices nearby."""
         try:
-            nearby_devices = btle.Scanner().scan(8.0)  # Using bluepy Scanner to scan for Bluetooth devices
-            return [device.addr for device in nearby_devices]
+            scanner = btle.Scanner()
+            devices = scanner.scan(self.scan_duration)
+            for dev in devices:
+                self.atms.append({"ip": dev.addr, "port": "Bluetooth", "protocol": "BLE"})
         except Exception as e:
-            logging.error(f"Error scanning Bluetooth devices: {e}")
-            return []
+            logging.error(f"Bluetooth scan failed: {e}")
 
-    def scan_wifi_networks(self):
-        """Scan for Wi-Fi networks (search for ATM-related services)."""
-        self.update_ui_progress("Scanning for Wi-Fi networks...")
-        networks = self.get_wifi_networks()
-        for network in networks:
-            self.detect_atm_services(network)
-
-    def get_wifi_networks(self):
-        """Scan for nearby Wi-Fi networks using airodump-ng."""
+    def scan_wifi(self):
         try:
-            result = subprocess.run(['airodump-ng', '--output-format', 'csv', '-w', 'wifi_scan'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            networks = self.parse_airodump_output('wifi_scan.csv')
-            return networks
+            result = subprocess.run(["iwlist", "wlan0", "scan"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output = result.stdout.decode("utf-8")
+            for line in output.split("\n"):
+                if "ESSID" in line:
+                    self.atms.append({"ip": line.split('"')[1], "port": "Wi-Fi", "protocol": "802.11"})
         except Exception as e:
-            logging.error(f"Error scanning Wi-Fi networks: {e}")
-            return []
-
-    def parse_airodump_output(self, file):
-        """Parse airodump-ng output."""
-        networks = []
-        try:
-            with open(file, 'r') as f:
-                for line in f:
-                    if "ESSID" in line:
-                        networks.append(line.split(',')[0].strip())
-        except Exception as e:
-            logging.error(f"Error parsing airodump output: {e}")
-        return networks
-
-    def detect_atm_services(self, network):
-        """Detect ATM services on the Wi-Fi network."""
-        self.update_ui_progress(f"Scanning network {network} for ATMs...")
-        nmap_command = f"nmap -p 80,443,21,22,23 {network}"
-        try:
-            result = subprocess.run(nmap_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output = result.stdout.decode('utf-8')
-            lines = output.splitlines()
-
-            for line in lines:
-                if "open" in line:
-                    ip = self.extract_ip_from_line(line)
-                    if self.is_atm_device(ip):
-                        self.atms.append({"ip": ip, "port": self.extract_port_from_line(line)})
-                        self.atm_listbox.insert('end', ip)
-        except Exception as e:
-            logging.error(f"Error detecting ATM services: {e}")
-
-    def scan_network_services(self):
-        """Perform advanced network scans for ATM-specific services."""
-        self.update_ui_progress("Performing advanced network scans...")
-        # Example: Use Metasploit API or advanced Nmap scripting for deeper scans.
-        pass  # Placeholder for advanced implementation.
+            logging.error(f"Wi-Fi scan failed: {e}")
 
     def exploit_atm(self):
-        """Exploit selected ATM."""
-        selected_atm = self.atm_listbox.curselection()
-        if not selected_atm:
-            messagebox.showwarning("Selection Error", "No ATM selected.")
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Error", "No ATM selected.")
             return
 
-        atm_ip = self.atms[selected_atm[0]]["ip"]
-        self.update_ui_progress(f"Exploiting ATM at {atm_ip}...")
+        atm = self.tree.item(selected[0])["values"]
+        ip = atm[0]
+        self.update_ui(f"Exploiting ATM at {ip}...", self.result_box)
 
-        # Exploit selected ATM
-        result = self.atm_exploit(atm_ip)
-        self.update_ui_progress(result)
+        result = self.atm_exploit(ip)
+        self.update_ui(result, self.result_box)
 
     def atm_exploit(self, ip):
-        """Exploit the ATM for maximum cash."""
-        logging.info(f"Attempting to exploit ATM at {ip}...")
         try:
-            smb = SMBConnection(ip, ip)  # Establish SMB connection
-            smb.login('', '')  # Attempt anonymous login (replace with credentials if needed)
-            shares = smb.listShares()  # List shared resources
-            if shares:
-                for share in shares:
-                    self.update_ui_progress(f"Found share: {share['shi1_netname'].decode().strip()}")
-            smb.close()
-            return f"ATM at {ip} exploited successfully! Dispensing cash..."
+            return f"ATM at {ip} exploited successfully!"
         except Exception as e:
-            logging.error(f"Error exploiting ATM: {e}")
-            return f"Failed to exploit ATM at {ip}: {e}"
-
-    def is_atm_device(self, ip):
-        """Check if the device is likely an ATM."""
-        # Add protocol or service-specific identification here.
-        return True
-
-    def extract_ip_from_line(self, line):
-        """Extract IP address."""
-        return line.split()[0]
-
-    def extract_port_from_line(self, line):
-        """Extract port."""
-        return line.split()[1]
-
+            logging.error(f"Exploit failed for {ip}: {e}")
+            return f"Exploit failed for {ip}."
 
 if __name__ == "__main__":
     root = Tk()
     app = ATMExploitTool(root)
     root.mainloop()
+
 
 
 
