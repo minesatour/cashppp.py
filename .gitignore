@@ -1,28 +1,27 @@
-# Python-specific files
+# Python-specific ignores
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-
-# Virtual environment
+*.pyd
+.Python
+env/
 venv/
-.env/
+*.egg-info/
+dist/
+build/
 
-# Log files
-*.log
+# Log files from the script
+uk_cashpoint_jackpot.log
 
-# Temporary files
-*.tmp
-*.bak
+# System and editor files
+.DS_Store
 *.swp
 *.swo
+*.swn
+.idea/
+.vscode/
 
-# Output files from scanning tools
-wifi_scan.*
+# Optional: Ignore any test files or temp data
+*.txt
 *.csv
-nmap_scan_output.*
-
-# System-specific files
-.DS_Store
-Thumbs.db
-
-
+temp/
